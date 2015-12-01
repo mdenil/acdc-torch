@@ -1,0 +1,52 @@
+CMAKE_MINIMUM_REQUIRED(VERSION 2.6 FATAL_ERROR)
+CMAKE_POLICY(VERSION 2.6)
+
+SET(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
+
+IF(LUAROCKS_PREFIX)
+    MESSAGE(STATUS "Installing Torch through Luarocks")
+    STRING(REGEX REPLACE "(.*)lib/luarocks/rocks.*" "\\1" CMAKE_INSTALL_PREFIX  "${LUAROCKS_PREFIX}")
+    MESSAGE(STATUS "Prefix inferred from Luarocks: ${CMAKE_INSTALL_PREFIX}")
+ENDIF()
+FIND_PACKAGE(Torch REQUIRED)
+FIND_PACKAGE(CUDA 6.5 REQUIRED)
+
+INCLUDE_DIRECTORIES("${Torch_INSTALL_INCLUDE}/THC")
+LINK_DIRECTORIES("${Torch_INSTALL_LIB}")
+
+INCLUDE_DIRECTORIES("${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+FILE(GLOB luasrc *.lua)
+
+SET(src-acdc_gpu
+    gpu/InitGPU.cu
+    gpu/Permutation.cu
+    gpu/cutorch_state.cu
+    gpu/fft_custom_layers2.cu
+    )
+
+SET(src-acdc_cpu
+    cpu/InitCPU.cpp
+    cpu/DCT.cpp
+    cpu/Permutation.cpp
+    )
+
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+LIST(APPEND CUDA_NVCC_FLAGS "-std=c++11")
+
+ADD_LIBRARY(acdc_cpu MODULE ${src-acdc_cpu})
+TARGET_LINK_LIBRARIES(acdc_cpu fftw3 fftw3f TH luaT)
+
+CUDA_ADD_LIBRARY(acdc_gpu MODULE ${src-acdc_gpu})
+TARGET_LINK_LIBRARIES(acdc_gpu THC TH luaT)
+CUDA_ADD_CUFFT_TO_TARGET(acdc_gpu)
+
+INSTALL(TARGETS acdc_cpu
+    RUNTIME DESTINATION "${Torch_INSTALL_LUA_CPATH_SUBDIR}"
+    LIBRARY DESTINATION "${Torch_INSTALL_LUA_CPATH_SUBDIR}")
+
+INSTALL(TARGETS acdc_gpu
+    RUNTIME DESTINATION "${Torch_INSTALL_LUA_CPATH_SUBDIR}"
+    LIBRARY DESTINATION "${Torch_INSTALL_LUA_CPATH_SUBDIR}")
+
+ADD_TORCH_PACKAGE(acdc "" "${luasrc}" "ACDC")
